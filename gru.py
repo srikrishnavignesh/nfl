@@ -338,8 +338,14 @@ import os
 import random
 
 class NFLDataset(Dataset):
-    def __init__(self, input_groups, output_groups, nfl_feature_transformer):
+    def __init__(self, input_groups, output_groups, nfl_feature_transformer, shuffle=True):
         self.nfl_feature_transformer = nfl_feature_transformer
+        self.input_groups = input_groups
+        self.output_groups = output_groups
+        
+        self.indices = list(range(len(input_groups)))
+        if shuffle:
+            random.shuffle(self.indices)
         self.input_groups = input_groups
         self.output_groups = output_groups
         
@@ -357,21 +363,28 @@ class NFLDataset(Dataset):
         return len(self.input_groups)
 
     def __getitem__(self, indx):
-        
-        input_df = self.input_groups[indx].copy()
-        output_df = self.output_groups[indx].copy()
+        val_indx = self.indices[indx]
+        input_df = self.input_groups[val_indx].copy()
+        output_df = self.output_groups[val_indx].copy()
 
         play_direction = input_df.iloc[0]['play_direction']
 
         input_df = self.nfl_feature_transformer.reflect_input_coordinates(input_df, play_direction)
         output_df = self.nfl_feature_transformer.reflect_output_coordinates(output_df, play_direction)
 
-        total_frames = input_df['frame_id'].max() + input_df['num_frames_output'].iloc[0]
+        given_frames = input_df['frame_id'].max()
+        output_frames = input_df['num_frames_output'].iloc[0]
+
+        total_frames = given_frames + output_frames
+
+        min_frame_start = max(given_frames - 10, 1)
         
         prev_frame = None
         x = None
-        for _, grouped_frame in input_df.sort_values(by=['frame_id', 'nfl_id'], ascending=[True, True]).groupby(by=['frame_id'], 
-                                                                                                          as_index=False, sort=False):
+        for f in range(min_frame_start, given_frames+1):
+            
+            grouped_frame = input_df[input_df['frame_id'] == f].sort_values(by=['nfl_id'], ascending=[True]).reset_index(drop=True)
+
             prev_frame = grouped_frame if prev_frame is None else prev_frame
             transformed_input_df = self.nfl_feature_transformer.transform_X(grouped_frame, prev_frame, total_frames)
             input_array = self._get_input_array(transformed_input_df)
@@ -386,8 +399,9 @@ class NFLDataset(Dataset):
         y_last = prev_frame[prev_frame['player_to_predict']]['y'].values # type: ignore
 
         y = None
-        for _, grouped_frame in output_df.sort_values(by=['frame_id', 'nfl_id'], ascending=[True, True]).groupby(by=['frame_id'], 
-                                                                                                            as_index=False, sort=False):
+        for  f in range(1, output_frames+1):
+        
+            grouped_frame = output_df[output_df['frame_id'] == f].sort_values(by=['nfl_id'], ascending=[True]).reset_index(drop=True)
             
             dx = grouped_frame['x'] - x_last
             dy = grouped_frame['y'] - y_last
@@ -456,7 +470,7 @@ def split_train_test(input_df, output_df, nfl_feature_transformer, test_ratio = 
     
 
     test_input_groups, test_output_groups =  input_groups[test_start:], output_groups[test_start:]
-    test_data = NFLDataset(test_input_groups, test_output_groups, nfl_feature_transformer)
+    test_data = NFLDataset(test_input_groups, test_output_groups, nfl_feature_transformer, shuffle=False)
     
     return train_data, test_data
 
@@ -490,6 +504,10 @@ class SpatialTemporalLayer(Module):
 
         self.mlp = Sequential(
                             Linear(d_model, 2*d_model),
+                            ReLU(),
+                            Linear(2*d_model, 2*d_model),
+                            ReLU(),
+                            Linear(2*d_model, 2*d_model),
                             ReLU(),
                             Linear(2*d_model, 2*d_model),
                             ReLU(),
@@ -784,17 +802,8 @@ def train(model, train_data, test_data, std_scaler, model_type = ModelType.DX_MO
     runner = Runner(model, train_data, test_data, std_scaler, model_type, lr=1e-4, wd=1e-4)
     runner.run()
 
-def evaluate(dx_model, dy_model, test_data, std_scaler, use_sub_sample_for_calculation=True):
-
-    subset_input_groups = []
-    subset_output_groups = []
-    if use_sub_sample_for_calculation:
-        for t in range(50):
-            subset_input_groups.append(test_data.input_groups[t])
-            subset_output_groups.append(test_data.output_groups[t])
-
-        test_data = NFLDataset(subset_input_groups, subset_output_groups, test_data.nfl_feature_transformer)
-    
+def evaluate(dx_model, dy_model, test_data, std_scaler):
+   
     dx_checkpoint_pt = torch.load(BEST_DX_MODEL_CHECKPOINT, map_location='cpu')
     dx_model.load_state_dict(dx_checkpoint_pt['model_state'])
     
@@ -818,16 +827,7 @@ def evaluate(dx_model, dy_model, test_data, std_scaler, use_sub_sample_for_calcu
     print(f'model rmse on the test dataset on dy {avg_rmse_y}')
     print(f'model rmse on test dataset: {avg_rmse}')
 
-def predict(dx_model, dy_model, test_data, std_scaler, use_sample_for_calculation=True):
-
-    subset_input_groups = []
-    subset_output_groups = []
-    if use_sample_for_calculation:
-        for t in range(20):
-            subset_input_groups.append(test_data.input_groups[t])
-            subset_output_groups.append(test_data.output_groups[t])
-
-        test_data = NFLDataset(subset_input_groups, subset_output_groups, test_data.nfl_feature_transformer)
+def predict(dx_model, dy_model, test_data, std_scaler):
     
     dx_checkpoint_pt = torch.load(BEST_DX_MODEL_CHECKPOINT, map_location='cpu')
     dx_model.load_state_dict(dx_checkpoint_pt['model_state'])
@@ -841,10 +841,11 @@ def predict(dx_model, dy_model, test_data, std_scaler, use_sample_for_calculatio
     dy_model.eval()
     dy_model.to('cuda')
 
+    n = len(test_data)
+
     preds = []
     with torch.no_grad():
-        n = len(test_data)
-        for t in tqdm(range(n), total=n, desc = 'dx_predict'):
+        for t in tqdm(range(n), total=n, desc = 'predict'):
             input_df = test_data.input_groups[t]
             output_df = test_data.output_groups[t]
 
@@ -858,15 +859,20 @@ def predict(dx_model, dy_model, test_data, std_scaler, use_sample_for_calculatio
 
             dy = dy_model(x_, None, predict_bool_, num_output_)
             
-            pred_play_sorted = input_df[input_df['player_to_predict']].sort_values(by=['nfl_id', 'frame_id'], ascending=[True, True])
-            output_df_sorted = output_df.sort_values(by=['nfl_id', 'frame_id'], ascending=[True, True])
-            predict_players_last_frame = (pred_play_sorted.groupby(['nfl_id'], as_index=False).last() )
+            predict_players = input_df[input_df['player_to_predict']]
+            max_frame_id = predict_players['frame_id'].max()
+            predict_players_last_frame = predict_players[predict_players['frame_id'] == max_frame_id]
 
-
-            predict_players_output_frames = predict_players_last_frame.merge(output_df_sorted, on=['nfl_id'], how='left')
+            predict_players_output_frames = ( predict_players_last_frame.merge(output_df, on=['nfl_id'], how='left')
+                                                    .sort_values(by=['nfl_id', 'frame_id_y']).reset_index(drop=True) 
+                                                )
             
-            pred_x =  -dx[:,0].cpu().numpy() + predict_players_output_frames['x_x'].values
-            pred_y =  dy[:,0].cpu().numpy() + predict_players_output_frames['y_x'].values
+            f = 1
+            if predict_players_output_frames['play_direction'].iloc[0] == 'left':
+                f = -1
+
+            pred_x =  predict_players_output_frames['x_x'].values + f*dx[:,0].cpu().numpy()
+            pred_y =  predict_players_output_frames['y_x'].values + dy[:,0].cpu().numpy() 
 
             game_id = predict_players_output_frames['game_id_x'].values
             play_id = predict_players_output_frames['play_id_x'].values
@@ -878,8 +884,8 @@ def predict(dx_model, dy_model, test_data, std_scaler, use_sample_for_calculatio
             y_last = predict_players_output_frames['y_x'].values
             play_direction = predict_players_output_frames['play_direction'].values
 
-            actual_x = output_df_sorted['x'].values
-            actual_y = output_df_sorted['y'].values
+            actual_x = predict_players_output_frames['x_y'].values
+            actual_y = predict_players_output_frames['y_y'].values
 
             columns = np.column_stack([game_id, play_id, nfl_id, frame_id, player_position, 
                           player_role,play_direction,x_last, y_last, actual_x, actual_y, pred_x, pred_y])
@@ -948,15 +954,20 @@ else:
 dx_model = SpatialTemporalLayer(d_model=128, nhead=8, spatial_encoder_layers=2, dropout=0.0, in_features=len(MODEL_INPUT_FEATURES))
 dy_model = SpatialTemporalLayer(d_model=128, nhead=8, spatial_encoder_layers=2, dropout=0.0, in_features=len(MODEL_INPUT_FEATURES))
 
-# print('training models...')
+print('training models...')
 # train(dx_model, train_data, test_data,  std_scaler, model_type=ModelType.DX_MODEL)
 # train(dy_model, train_data, test_data,  std_scaler, model_type=ModelType.DY_MODEL)
 
-# print('predicting models...')
-# predict(dx_model, dy_model, test_data, std_scaler, True)
+print('predicting models...')
+predict(dx_model, dy_model, test_data, std_scaler)
 
 print('evaluating models...')
-evaluate(dx_model, dy_model, test_data, std_scaler, False)
+evaluate(dx_model, dy_model, test_data, std_scaler)
+
+
+
+
+
 
 
 

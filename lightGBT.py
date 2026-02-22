@@ -461,11 +461,17 @@ def publish_results(X_df, Y_df, dx_train, dy_train):
     actual_y = X_df['y'].values
     play_direction = X_df['play_direction'].values
 
-    x_last[play_direction == 'left'] = 120 - x_last[play_direction == 'left'] 
-    actual_x[play_direction == 'left'] = 120 - actual_x[play_direction == 'left'] 
-
-    pred_x = -pred_dx + x_last
+    pred_x = pred_dx + x_last
     pred_y = pred_dy + y_last
+
+    mask = (play_direction == 'left')
+    pred_x[mask] =  120 - pred_x[mask]
+
+    actual_x[mask] = 120 - actual_x[mask] 
+
+    pred_x = np.clip(pred_x, 0.0, 120.0)
+    pred_y = np.clip(pred_y, 0.0, 53.3)
+  
 
 
     preds = np.column_stack([game_id, play_id, nfl_id, frame_id, player_position, 
@@ -570,7 +576,6 @@ dy_model_feature_importance = get_features_by_importance(dy_train)
 
 print(f'top 15 features for dx_model: {dx_model_feature_importance[:15]}')
 print(f'top 15 features for dy_model: {dy_model_feature_importance[:15]}')
-
 
 
 
