@@ -60,7 +60,7 @@ Each frame includes tracking data before the pass is thrown:
 Feature engineering is performed using the `NFLFeatureTransformer` class, which normalizes numerical fields and adds several new features.
 
 ### 🔹 Angle-Based Features
-
+-  
 - `sin_dir`, `cos_dir`  
 - `sin_o`, `cos_o`  
 - `angle_between_ball_land_and_player`  
@@ -69,6 +69,14 @@ Feature engineering is performed using the `NFLFeatureTransformer` class, which 
 - `cos_angle_between_ball_land_and_player`  
 - `sin_angle_between_ball_land_and_player_orient`  
 - `cos_angle_between_ball_land_and_player_orient`  
+- `sin_change_in_o` 
+- `cos_change_in_o` 
+- `change_in_dir`
+- `sin_change_in_dir` 
+- `cos_change_in_dir`
+- `change_in_o`
+- `angle_between_orientation_and_player`
+       
 
 These help the model understand relative direction and orientation with respect to the ball.
 
@@ -77,8 +85,31 @@ These help the model understand relative direction and orientation with respect 
 - `velocity_x`, `velocity_y`  
 - `acc_x`, `acc_y`  
 - `distance_to_x`, `distance_to_y`  
-- `distance_to_sideline`, `distance_to_endzone`  
+- `distance_to_sideline`,
 - `distance_to_ball_land_x`, `distance_to_ball_land_y`  
+- `absolute_yardline_number`
+- `distance_between_the_reciever` 
+- `distance_between_the_passer`
+- `distance_to_defense` 
+- `distance_to_defense_x` 
+- `distance_to_defense_y`
+- `distance_to_offense`
+- `distance_to_offense_x` 
+- `distance_to_offense_y`
+- `nearest_teammate_dis` 
+- `nearest_teammate_dis_x`
+- `nearest_teammate_dis_y`,
+- `required_velocity_x` 
+- `required_velocity_y` 
+- `required_acc_x`
+- `required_acc_y` 
+- `proj_x_acc` 
+- `proj_y_acc` 
+- `proj_x_velocity`
+- `proj_y_velocity`
+- `required_speed` 
+- `required_acceleration`
+
 
 These features capture how players move in relation to the field and ball landing location.
 
@@ -90,35 +121,64 @@ These features capture how players move in relation to the field and ball landin
 - `change_in_speed`  
 - `change_in_acceleration`  
 - `change_in_o`  
-- `change_in_dir`  
+- `change_in_dir`
+- `proj_x_acc_diff` 
+- `proj_y_acc_diff`
+- `proj_x_velocity_diff` 
+- `proj_y_velocity_diff`
+- `required_speed_diff` 
+- `required_velocity_x_diff`
+- `required_velocity_y_diff` 
+- `required_acc_x_diff`
+- `required_acc_y_diff` 
+
 
 These model short-term motion dynamics and evolution of movement.
 
----
-
-## 📁 Project Notebooks
-
-- `gru_processing.ipynb`  
-
-Each notebook represents a separate modeling approach to the same prediction task.
-
-
 
 ---
 
-## 🔷 Model 2: GRU-Based Spatiotemporal Processing
+## 📁 Project files
+
+- `gru.py` 
+- `lightGBT.py` 
+
+Each python file represents a separate modeling approach to the same prediction task.
+
+---
+
+## 🔷 Model 1: LightGBT
 
 ### 🧱 Architecture
 
 This approach combines:
 
-1. **Spatial Transformer Encoder**  
+1. Takes the last given frame and uses that data to predict the next `num_frames_output`.
+2. We predict the residual from the last known x and y positions.
+3. Uses a separate model dx_model , dy_model to predict the residuals.
+
+
+## 🔷 Model 2: RNN With Cross Attention and MLP
+
+### 🧱 Architecture
+
+This approach combines:
+
+Uses Two Models to find dx , dy from the last known x and y positions.
+
+1. **Spatial Encoder**  
    - Operates on `[T, P, din]`  
    - Captures relationships among players at a given time frame  
 
 2. **GRU Layer**  
    - Operates on `[P, T, din]`  
-   - Models temporal evolution of each player's trajectory  
+   - Models temporal evolution for each player's trajectory  (taken only on the players to predict)
+   - Takes cross attention with Spatial Encoder at each time t.
+
+3. **MLP Layer**  
+   - Operates on `[P*T, din]`  
+   - outputs the change in displacment dx, dy
+
 
 Input is fed as:
 
@@ -130,9 +190,6 @@ Where:
 - `T`: total time steps  
 - `din`: input feature dimension  
 
-### 🎯 Prediction Strategy
-
-- Uses **teacher forcing** to predict the next **N** frames for the `P_pred` players.  
 
 ### 📉 Loss Function
 
@@ -140,16 +197,9 @@ Where:
 
 ### 📊 Performance
 
-- **RMSE: 2.891 yards**
-
----
-
-## 🧠 Key Insights
-
-- Spatial encoders help understand player formations and local interactions.  
-- Temporal modeling (speed, acceleration, orientation change) is crucial for accurate forecasting.  
-- Physics- and geometry-based features (angles, distances, required speed) significantly boost performance.  
-- GRU-based modeling gave more stable long-horizon predictions in this setup compared to pure transformer encoders.
+- **RMSE: 1.71 yards** on physics first order linear exerpolation
+- **RMSE: 0.66 yards** on LightGBT
+- **RMSE: 0.68 yards** on RNN With Cross Attention and MLP
 
 ---
 
@@ -161,4 +211,4 @@ Where:
 ## 🎉 Conclusion
 
 This project applies deep feature engineering, transformers, and recurrent architectures to model complex NFL player movement in pass plays.  
-The GRU-based model currently achieves better RMSE than the transformer-based variant, but both highlight the rich spatiotemporal structure in tracking data and open doors to more advanced architectures in future work.
+The lightGBT approach is lot simpler and acheives slightly better performance.
