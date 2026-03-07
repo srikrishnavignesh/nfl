@@ -1,0 +1,8 @@
+__pycache__/*
+.idea/*
+.vscode/*
+checkpoints_dx/*
+checkpoints_dy/*
+train_input/*
+train_output/*
+

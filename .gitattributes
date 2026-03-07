@@ -1,0 +1,9 @@
+sample_nfl_plays.csv filter=lfs diff=lfs merge=lfs -text
+sample_nfl_plays_actual_output.csv filter=lfs diff=lfs merge=lfs -text
+cross_attn_best_weight_dx.pt filter=lfs diff=lfs merge=lfs -text
+cross_attn_best_weight_dy.pt filter=lfs diff=lfs merge=lfs -text
+gru_scaler.joblib filter=lfs diff=lfs merge=lfs -text
+lightGBT_dx_model.txt filter=lfs diff=lfs merge=lfs -text
+lightGBT_dy_model.txt filter=lfs diff=lfs merge=lfs -text
+train_input/* filter=lfs diff=lfs merge=lfs -text
+train_output/* filter=lfs diff=lfs merge=lfs -text

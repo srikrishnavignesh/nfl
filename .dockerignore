@@ -1,0 +1,11 @@
+checkpoints_dx/
+checkpoints_dy/
+.idea/
+.vscode/
+__pycache__/
+gru_test_results.csv
+lightgbt_test_data_results.csv
+sample_nfl_plays_actual_output.csv
+sample_nfl_plays.csv
+train_data_analysis.py
+README.md
