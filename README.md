@@ -1,3 +1,11 @@
+---
+license: apache-2.0
+title: nfl
+sdk: docker
+emoji: 🔥
+colorFrom: red
+colorTo: indigo
+---
 # 📘 NFL Player Trajectory Prediction — Spatiotemporal Modeling (Kaggle Big Data Bowl 2026)
 
 ## 📌 Overview
