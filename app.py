@@ -1,6 +1,6 @@
 from flask import Flask, request, Response
 import pandas as pd
-import gru_app_predict
+import cross_attn_with_mlp_predict
 import lightGBT_app_predict
 import os
 import logging
@@ -15,16 +15,16 @@ logging.basicConfig(level=logging.INFO)
 def health_check():
     return 'dont worry i m there'
 
-@app.route('/nfl/gru_predict_play', methods=['POST']) 
-def gru_predict__play():
+@app.route('/nfl/cross_attn_with_mlp_predict_play', methods=['POST']) 
+def cross_attn_with_mlp_predict_play():
     csv_file = request.files['file'] 
     df = pd.read_csv(csv_file.stream)
-    res_df = gru_app_predict.predict(df)
+    res_df = cross_attn_with_mlp_predict.predict(df)
 
     return  Response(
         res_df.to_csv(index=False),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=gru_predict.csv"}
+        headers={"Content-Disposition": "attachment; filename=cross_attn_with_mlp_predict.csv"}
     )
 
 @app.route('/nfl/lightGBT_predict_play', methods=['POST']) 
